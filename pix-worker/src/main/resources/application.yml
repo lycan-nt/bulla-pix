@@ -36,10 +36,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        include: health,info,prometheus,metrics,circuitbreakers,circuitbreakerevents
   endpoint:
     health:
       show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
   metrics:
     tags:
       application: ${spring.application.name}
@@ -63,4 +66,4 @@ resilience4j:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{correlationId:-}]"
+    level: "%5p [${spring.application.name:},%X{correlationId:-},%X{transactionId:-}]"

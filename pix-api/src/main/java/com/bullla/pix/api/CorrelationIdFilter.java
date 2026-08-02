@@ -1,5 +1,6 @@
 package com.bullla.pix.api;
 
+import com.bullla.pix.infrastructure.logging.CorrelationIdContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,7 +16,7 @@ import java.util.UUID;
 public class CorrelationIdFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Correlation-Id";
-    public static final String MDC_KEY = "correlationId";
+    public static final String MDC_KEY = CorrelationIdContext.MDC_KEY;
 
     @Override
     protected void doFilterInternal(
