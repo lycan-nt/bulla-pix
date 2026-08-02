@@ -1,0 +1,57 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: pix-api
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pix
+    username: pix
+    password: pix
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: pix
+    password: pix
+    listener:
+      simple:
+        auto-startup: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+app:
+  security:
+    jwt:
+      secret: demo-only-change-me-32chars-min!!
+      expiration-seconds: 3600
+    demo:
+      username: demo
+      password: demo
+  messaging:
+    ttl-ms: 30000
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{correlationId:-}]"

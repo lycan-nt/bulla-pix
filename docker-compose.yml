@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pix
+      POSTGRES_USER: pix
+      POSTGRES_PASSWORD: pix
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pix -d pix"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: pix
+      RABBITMQ_DEFAULT_PASS: pix
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pix-api:
+    build:
+      context: .
+      dockerfile: pix-api/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pix
+      SPRING_DATASOURCE_USERNAME: pix
+      SPRING_DATASOURCE_PASSWORD: pix
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: pix
+      SPRING_RABBITMQ_PASSWORD: pix
+      APP_SECURITY_JWT_SECRET: demo-only-change-me-32chars-min!!
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  pix-worker:
+    build:
+      context: .
+      dockerfile: pix-worker/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pix
+      SPRING_DATASOURCE_USERNAME: pix
+      SPRING_DATASOURCE_PASSWORD: pix
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: pix
+      SPRING_RABBITMQ_PASSWORD: pix
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
