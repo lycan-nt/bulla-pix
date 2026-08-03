@@ -1,6 +1,7 @@
 package com.bullla.pix.application;
 
 import com.bullla.pix.application.port.IPartnerPixClient;
+import com.bullla.pix.application.port.IPixMetricsRecorder;
 import com.bullla.pix.application.port.IPixTransactionRepository;
 import com.bullla.pix.domain.PixStatus;
 import com.bullla.pix.domain.PixTransaction;
@@ -12,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -19,8 +21,10 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +38,9 @@ class ProcessPixTransactionUseCaseTest {
     @Mock
     private IPartnerPixClient partnerPixClient;
 
+    @Mock
+    private IPixMetricsRecorder metricsRecorder;
+
     private ProcessPixTransactionUseCase useCase;
 
     @BeforeEach
@@ -41,6 +48,7 @@ class ProcessPixTransactionUseCaseTest {
         useCase = new ProcessPixTransactionUseCase(
                 repository,
                 partnerPixClient,
+                metricsRecorder,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 3
         );
@@ -58,6 +66,8 @@ class ProcessPixTransactionUseCaseTest {
 
         assertThat(tx.getStatus()).isEqualTo(PixStatus.COMPLETED);
         assertThat(tx.getAttemptCount()).isEqualTo(1);
+        verify(metricsRecorder).recordCompleted();
+        verify(metricsRecorder).recordPartnerCall(any(Duration.class), eq(true));
     }
 
     @Test
@@ -73,6 +83,8 @@ class ProcessPixTransactionUseCaseTest {
 
         assertThat(tx.getStatus()).isEqualTo(PixStatus.PROCESSING);
         assertThat(tx.getAttemptCount()).isEqualTo(1);
+        verify(metricsRecorder).recordRetryScheduled();
+        verify(metricsRecorder).recordPartnerCall(any(Duration.class), eq(false));
     }
 
     @Test
@@ -90,6 +102,7 @@ class ProcessPixTransactionUseCaseTest {
         assertThat(tx.getStatus()).isEqualTo(PixStatus.FAILED);
         assertThat(tx.getAttemptCount()).isEqualTo(3);
         assertThat(tx.getFailureReason()).contains("indisponível");
+        verify(metricsRecorder).recordFailed();
     }
 
     @Test
@@ -101,6 +114,7 @@ class ProcessPixTransactionUseCaseTest {
         useCase.execute("tx-1");
 
         verify(partnerPixClient, never()).sendPix(any(), any(), any(), any());
+        verifyNoInteractions(metricsRecorder);
     }
 
     private PixTransaction received(String id) {

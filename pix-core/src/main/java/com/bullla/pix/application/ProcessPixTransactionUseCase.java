@@ -1,6 +1,7 @@
 package com.bullla.pix.application;
 
 import com.bullla.pix.application.port.IPartnerPixClient;
+import com.bullla.pix.application.port.IPixMetricsRecorder;
 import com.bullla.pix.application.port.IPixTransactionRepository;
 import com.bullla.pix.domain.PixStatus;
 import com.bullla.pix.domain.PixTransaction;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 
 public class ProcessPixTransactionUseCase {
@@ -17,17 +19,20 @@ public class ProcessPixTransactionUseCase {
 
     private final IPixTransactionRepository repository;
     private final IPartnerPixClient partnerPixClient;
+    private final IPixMetricsRecorder metricsRecorder;
     private final Clock clock;
     private final int maxAttempts;
 
     public ProcessPixTransactionUseCase(
             IPixTransactionRepository repository,
             IPartnerPixClient partnerPixClient,
+            IPixMetricsRecorder metricsRecorder,
             Clock clock,
             int maxAttempts
     ) {
         this.repository = repository;
         this.partnerPixClient = partnerPixClient;
+        this.metricsRecorder = metricsRecorder;
         this.clock = clock;
         this.maxAttempts = maxAttempts;
     }
@@ -62,12 +67,16 @@ public class ProcessPixTransactionUseCase {
     }
 
     private IPartnerPixClient.PartnerResult callPartner(PixTransaction transaction) {
-        return partnerPixClient.sendPix(
+        long startNanos = System.nanoTime();
+        IPartnerPixClient.PartnerResult result = partnerPixClient.sendPix(
                 transaction.getTransactionId(),
                 transaction.getAmount(),
                 transaction.getPixKey(),
                 transaction.getDescription()
         );
+        Duration latency = Duration.ofNanos(System.nanoTime() - startNanos);
+        metricsRecorder.recordPartnerCall(latency, result.success());
+        return result;
     }
 
     private void handlePartnerResult(PixTransaction transaction, IPartnerPixClient.PartnerResult result) {
@@ -87,12 +96,14 @@ public class ProcessPixTransactionUseCase {
     private void complete(PixTransaction transaction) {
         transaction.markCompleted(Instant.now(clock));
         repository.save(transaction);
+        metricsRecorder.recordCompleted();
         log.info("PIX {} concluído", transaction.getTransactionId());
     }
 
     private void failPermanently(PixTransaction transaction, String reason) {
         transaction.markFailed(reason, Instant.now(clock));
         repository.save(transaction);
+        metricsRecorder.recordFailed();
         log.warn(
                 "PIX {} falhou após {} tentativas: {}",
                 transaction.getTransactionId(),
@@ -103,6 +114,7 @@ public class ProcessPixTransactionUseCase {
 
     private void scheduleRetry(PixTransaction transaction, String reason) {
         repository.save(transaction);
+        metricsRecorder.recordRetryScheduled();
         throw new PartnerTemporaryFailureException(transaction.getTransactionId(), reason);
     }
 }

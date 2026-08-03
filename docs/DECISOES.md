@@ -17,6 +17,7 @@
 | Mock do parceiro + Resilience4j | Simula latência/falhas e protege a integração |
 | JWT HS256 de demonstração | Segurança mínima dado o prazo do teste |
 | **pix-api** + **pix-worker** + biblioteca **pix-core** | Separa HTTP do processamento; escala consumers à parte |
+| OpenTelemetry (OTLP) exportando para SigNoz self-hosted, vendorizado em `observability/signoz` e incluído no `docker-compose.yml` raiz via `include:` | Observabilidade completa (traces distribuídos entre `pix-api`/`pix-worker` + métricas + logs correlacionados) |
 
 ## Trade-offs
 
@@ -34,11 +35,14 @@
 
 ## Premissas
 
-- Componentes externos podem ser simplificados ou mockados (conforme o enunciado).
+- Componentes externos podem ser simplificados ou mockados.
 - Status da transação: `RECEIVED` → `PROCESSING` → `COMPLETED` | `FAILED`.
 - `POST /pix` retorna **202 Accepted**.
 - Mesmo `transactionId` com payload diferente retorna **409 Conflict**.
 - O `transactionId` é gerado e enviado pelo cliente (chave de idempotência).
+- SigNoz sobe no mesmo `docker compose up` do projeto (rede `signoz-net` compartilhada com `pix-api`/`pix-worker`), sem exigir instalação separada; ver [OPERACAO.md](OPERACAO.md#observabilidade-signoz) para portas e primeiro acesso.
+- Conta admin do SigNoz pré-provisionada via `SIGNOZ_USER_ROOT_*` (root user, suportado desde o SigNoz v0.112) — elimina o passo manual de signup na UI no primeiro acesso.
+- Sampling de trace em 100% (`management.tracing.sampling.probability=1.0`) — aceitável no volume deste teste, não recomendado como está para produção com alto tráfego.
 
 ## Estrutura multi-módulo
 
@@ -50,9 +54,5 @@ São **dois serviços** e **uma biblioteca**, não três microsserviços:
 | `pix-api` | Processo HTTP na porta `8080` — JWT, REST, enfileiramento; listeners Rabbit desligados |
 | `pix-worker` | Processo na porta `8081` — consome a fila, mock do parceiro, retry/DLQ e Resilience4j |
 
-## Melhorias futuras (não bloqueantes)
-
-- OpenAPI/Swagger mais rico (`@ApiResponse`, `@Parameter`, exemplos nos DTOs).
-- Flyway, Outbox pattern, rate limiting e tracing distribuído (OpenTelemetry).
 
 Ver também: [OPERACAO.md](OPERACAO.md) · [README](../README.md)

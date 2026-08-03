@@ -39,7 +39,7 @@ flowchart LR
 1. O Maven gera `pix-core/target/pix-core-*.jar`.
 2. `pix-api` e `pix-worker` dependem de `com.bullla:pix-core`.
 3. No fat JAR de cada app, o core fica em `BOOT-INF/lib/`.
-4. No Docker Compose sobem apenas **pix-api**, **pix-worker**, Postgres e RabbitMQ.
+4. No Docker Compose sobem **pix-api**, **pix-worker**, Postgres, RabbitMQ e a stack de observabilidade [SigNoz](observability/signoz) (self-hosted).
 
 ## Stack
 
@@ -48,7 +48,28 @@ flowchart LR
 - Spring Security (JWT HS256) — somente no **pix-api**
 - Resilience4j (circuit breaker) — somente no **pix-worker**
 - springdoc OpenAPI, Actuator e Prometheus
+- OpenTelemetry (traces + métricas + logs) exportado via OTLP para o [SigNoz](https://signoz.io) local
 - Pacote base: `com.bullla.pix`
+
+## Observabilidade
+
+Traces, métricas e logs de **pix-api** e **pix-worker** são exportados via OTLP para uma stack
+[SigNoz](https://signoz.io) self-hosted, que sobe junto no mesmo `docker compose up`:
+
+- **Traces distribuídos**: o contexto de trace propaga automaticamente do `POST /pix` até o
+  processamento no worker (via header AMQP no RabbitMQ), incluindo o span da chamada ao parceiro
+  mock (`pix.partner.invoke`, ~2s) — a mesma trace mostra a requisição HTTP, a fila e o worker.
+- **Métricas de negócio**: contagem de transações por status (`pix.transactions.result`),
+  reprocessamentos (`pix.transactions.retry`) e latência do parceiro (`pix.partner.call`),
+  também disponíveis em `/actuator/prometheus`.
+- **Logs correlacionados**: cada log carrega `trace_id`/`span_id` + o `correlationId`/
+  `transactionId` do MDC, permitindo filtrar por transação e ver os logs dos dois serviços juntos.
+- **Circuit breaker**: estado do breaker do parceiro (`CLOSED`/`OPEN`/`HALF_OPEN`) exposto em
+  `/actuator/health` do **pix-worker**.
+
+Acesso: http://localhost:3301 (`admin@pix.local` / `Pix-Admin-Bulla1!`, conta já provisionada).
+Detalhes de configuração, portas e sinais para alertas em
+[docs/OPERACAO.md](docs/OPERACAO.md#observabilidade-signoz).
 
 ## Como executar
 
@@ -60,10 +81,16 @@ docker compose up --build
 
 Sobe:
 
-- **pix-api** → http://localhost:8080  
-- **pix-worker** (health) → http://localhost:8081  
-- Postgres → `:5432`  
+- **pix-api** → http://localhost:8080
+- **pix-worker** (health) → http://localhost:8081
+- Postgres → `:5432`
 - RabbitMQ UI → http://localhost:15672 (`pix` / `pix`)
+- **SigNoz UI** (traces, métricas e logs) → http://localhost:3301 (`admin@pix.local` / `Pix-Admin-Bulla1!`)
+
+> A stack do SigNoz inclui ClickHouse, então o primeiro `up` demora ~1-2 min para
+> ficar pronta (migrations do ClickHouse) e recomenda-se pelo menos 4GB de RAM
+> livres para o Docker. Detalhes/arquitetura em [observability/signoz](observability/signoz)
+> e em [docs/OPERACAO.md](docs/OPERACAO.md#observabilidade-signoz).
 
 ## Autenticação (somente demonstração)
 
@@ -98,9 +125,10 @@ curl -s http://localhost:8080/pix/tx-123456 \
 
 Links úteis:
 
-- Swagger: http://localhost:8080/swagger-ui.html  
-- Health da API: http://localhost:8080/actuator/health  
-- Health do worker: http://localhost:8081/actuator/health  
+- Swagger: http://localhost:8080/swagger-ui.html
+- Health da API: http://localhost:8080/actuator/health
+- Health do worker: http://localhost:8081/actuator/health
+- SigNoz (traces/métricas/logs): http://localhost:3301
 
 ## Testes
 
@@ -128,6 +156,7 @@ Assim, nenhum merge chega à `main` sem compilar, passar nos testes e buildar as
 - Mesmo `transactionId` com payload diferente → **409 Conflict**.
 - Status: `RECEIVED` → `PROCESSING` → `COMPLETED` | `FAILED`.
 - Autenticação JWT é mínima (demo), suficiente para proteger `/pix/**` no teste.
+- Observabilidade (traces, métricas e logs) roda 100% local via SigNoz self-hosted, sem depender de nenhum SaaS externo.
 
 ## Documentação complementar
 
