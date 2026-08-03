@@ -94,7 +94,7 @@ Sobe:
 
 ## Autenticação (somente demonstração)
 
-JWT de demonstração — **não usar em produção**.
+JWT de demonstração.
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/auth/token \
