@@ -28,6 +28,12 @@ dos dois serviços em uma única UI, com correlação automática entre eles.
 3. Gerar tráfego (`POST /pix` + `GET /pix/{id}`, ver exemplos no [README](../README.md)) e explorar
    em **Traces**, **Logs** e **Dashboards → Metrics** no menu lateral.
 
+![Logs do pix-api e pix-worker no SigNoz, filtráveis por transactionId/correlationId](images/signoz-logs.png)
+
+*Aba **Logs** do SigNoz: eventos do `pix-api` e `pix-worker` já correlacionados (enfileiramento,
+consumo, chamada ao parceiro mock e falhas temporárias com retry) — pesquisável por
+`transactionId` para acompanhar uma transação específica nos dois serviços.*
+
 ### O que é exportado e como
 
 - **Traces**: `pix-api` e `pix-worker` exportam via OTLP (`micrometer-tracing-bridge-otel` +
@@ -37,16 +43,40 @@ dos dois serviços em uma única UI, com correlação automática entre eles.
   então uma única trace no SigNoz mostra a requisição HTTP, a publicação na fila, o consumo
   no worker e a chamada ao parceiro mock como spans filhos — incluindo o span
   `pix.partner.invoke` (~2s), que isola visualmente a latência do parceiro na waterfall.
+
+  ![Waterfall de uma trace do GET /pix/{transactionId} no SigNoz, com os spans do Spring Security](images/signoz-trace.png)
+
+  *Aba **Traces** do SigNoz: detalhe (Flame Graph + Waterfall) de uma trace do
+  `GET /pix/{transactionId}`, com a instrumentação automática do Spring detalhando cada span
+  da filter chain de segurança (`security filterchain before/after`, `authenticate bearertoken`,
+  `authorize request`) — no painel à direita dá pra inspecionar atributos e logs de cada span
+  individualmente.*
+
+  ![Waterfall de uma trace de POST /pix reenviado com o mesmo transactionId, sem spans de fila/worker por causa da idempotência](images/signoz-trace-post.png)
+
+  *Outra trace, agora de um `POST /pix` (~50ms, status 202): repare que ela **não** tem o span
+  `pix.exchange/pix.transaction send` nem spans do `pix-worker` — isso acontece porque essa
+  chamada reenviou o mesmo `transactionId` de uma transação já existente, e o
+  `CreatePixTransactionUseCase` retorna a transação existente sem publicar de novo na fila
+  (idempotência). Numa trace de `POST /pix` para um `transactionId` novo, o mesmo trace_id
+  encadeia adicionalmente o span de publicação na fila e, do lado do **pix-worker**, o
+  `pix.transactions receive` com o `pix.partner.invoke` (~2s) como filho — confirmado via
+  consulta direta ao ClickHouse (`signoz_traces.distributed_signoz_index_v3`).*
 - **Métricas**: `micrometer-registry-otlp` publica periodicamente todos os meters (as métricas
   de negócio da seção anterior + métricas padrão do Spring: `http.server.requests`,
   `rabbitmq.*`, JVM, etc.) para o mesmo collector.
+
+  ![Métricas pix.partner.call e pix.partner.invoke no Metrics Explorer do SigNoz](images/signoz-metrics.png)
+
+  *Aba **Metrics** do SigNoz: métricas de negócio exportadas via OTLP, incluindo a latência do
+  parceiro (`pix.partner.call`, em histograma) e a métrica automática gerada pela `Observation`
+  do span `pix.partner.invoke`.*
 - **Logs**: um `OpenTelemetryAppender` (Logback) instalado em runtime
   (`OpenTelemetryAppenderInitializer`) envia cada log via OTLP já com `trace_id`/`span_id` e
   todo o MDC (`correlationId`, `transactionId`) como atributos — em **Logs** no SigNoz é
   possível filtrar por `transactionId` e ver exatamente os logs daquela transação nos dois
   serviços, ou pular direto da trace para os logs correlacionados a ela.
-- Sampling em 100% (`management.tracing.sampling.probability=1.0`) — adequado para demo/teste,
-  não para produção com alto volume (ver "Crescimento futuro").
+- Sampling em 100% (`management.tracing.sampling.probability=1.0`).
 
 ### Decisão de operação: OpAMP desabilitado no collector
 
