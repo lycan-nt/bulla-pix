@@ -1,3 +1,7 @@
+
+include:
+  - observability/signoz/docker-compose.signoz.yml
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -42,11 +46,15 @@ services:
       SPRING_RABBITMQ_USERNAME: pix
       SPRING_RABBITMQ_PASSWORD: pix
       APP_SECURITY_JWT_SECRET: demo-only-change-me-32chars-min!!
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    networks:
+      - default
+      - signoz-net
 
   pix-worker:
     build:
@@ -62,8 +70,12 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: pix
       SPRING_RABBITMQ_PASSWORD: pix
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    networks:
+      - default
+      - signoz-net

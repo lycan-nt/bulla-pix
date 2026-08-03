@@ -25,6 +25,7 @@ spring:
       simple:
         acknowledge-mode: auto
         default-requeue-rejected: false
+        observation-enabled: true
         retry:
           enabled: true
           max-attempts: 3
@@ -46,6 +47,17 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
+    logging:
+      endpoint: http://localhost:4318/v1/logs
 
 app:
   partner:

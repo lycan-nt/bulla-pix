@@ -16,3 +16,8 @@ target/
 .env
 
 .DS_Store
+
+# Binário baixado em runtime pelo container init-clickhouse do SigNoz
+# (observability/signoz/docker-compose.signoz.yml) dentro do bind mount.
+observability/signoz/common/clickhouse/user_scripts/*
+!observability/signoz/common/clickhouse/user_scripts/.gitkeep
